@@ -1,0 +1,14 @@
+# Raw AWS inventory contains account IDs/resource names: never commit
+inventory/raw/
+
+# Terraform
+.terraform/
+*.tfplan
+crash.log
+*.tfvars
+!*.tfvars.example
+# State is committed ONLY for bootstrap/ (no secrets). All other roots use the S3 backend.
+*.tfstate
+*.tfstate.*
+!bootstrap/terraform.tfstate
+!bootstrap/terraform.tfstate.backup
