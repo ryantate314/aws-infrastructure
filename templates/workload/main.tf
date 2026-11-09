@@ -50,7 +50,7 @@ data "aws_caller_identity" "current" {}
 data "aws_partition" "current" {}
 
 locals {
-  name        = "${var.workload}-${var.env}"
+  name        = "${var.env}-${var.workload}"
   bucket_name = coalesce(var.bucket_name, "${local.name}-site-${data.aws_caller_identity.current.account_id}")
   use_domain  = var.domain_name != null
 }

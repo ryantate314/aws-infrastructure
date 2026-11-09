@@ -14,7 +14,7 @@ Terraform for one personal AWS account (single account, regions `us-east-1` prim
 6. **Account-wide S3 Block Public Access** (`enable_account_s3_public_access_block`) is `true`. Never make a bucket public; serve public content through CloudFront + OAC.
 
 ## Conventions
-- Names: `${project-or-workload}-${env}-${purpose}`; the baseline uses `shared-${env}-*`. Lowercase, hyphens.
+- Names: `${env}-${workload}-${purpose}` (environment first), e.g. `prod-photodeliverysite-api`; the baseline uses `${env}-shared-*`. Lowercase, hyphens. This applies to new resources; existing resources keep their names unless they are being replaced anyway (renaming IAM roles, Lambdas, APIs etc. is a replace). Globally unique names (S3) keep the prefix and add the account ID or a suffix where needed.
 - Tags come from provider `default_tags` (Project, Workload/Component, Environment, ManagedBy). Do not hand-tag resources unless a resource type does not support default tags.
 - Every S3 bucket: public access block (all four), `BucketOwnerEnforced`, SSE, TLS-only bucket policy, lifecycle rule (abort incomplete multipart, expire old versions/logs).
 - Security groups: no `0.0.0.0/0` on SSH/RDP ever; administrative access is SSM Session Manager only. Reference security groups, not CIDRs, between tiers.

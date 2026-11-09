@@ -58,6 +58,21 @@ Other S3 buckets: `backup.ryantate314` (private, SSE-S3, unversioned).
 - `ryantate314.net` has **no public-access block** and is public by policy. Intended for website hosting, but HTTP only.
 - Versioning is on for the CDK and SAM buckets only. `photos.ryantate314.net` and `backup.ryantate314` are unversioned.
 
+### Photo site detail (read-only inventory for M3, 2026-11-09)
+Sanitized: no account IDs, shoot, album or customer names.
+- **CloudFront** `E2M8XUB97CX5W8`, alias `photos.ryantate314.net`, TLS `TLSv1.2_2021`, default root `index.html`. No response-headers policy and no functions attached. Three origins:
+  1. S3 `photos.ryantate314.net`, origin path `/site`, OAC. This is the default behavior (the Angular build).
+  2. API Gateway REST `photos-ryantate314-net`, no origin path. Behavior `/api/*` (all methods, CachingOptimized policy plus an origin-request policy). The API stage is literally named `api`, which is how `/api/...` reaches it.
+  3. S3 `photos.ryantate314.net`, no origin path, same OAC. Behavior `/images/*` (GET/HEAD).
+- **SPA fallback:** a distribution-wide custom error response 403 → `/index.html` with 200 (min TTL 10s). CloudFront has no `s3:ListBucket`, so a missing object returns 403 and is also served as `index.html` (this applies to `/images/*` too). Keep this as is when importing; changing it is a separate decision.
+- **REST APIs:**
+  - `photos-ryantate314-net` (stage `api`) is the live one: `GET /shoots/{shootId}/albums` → `photos-ryantate314-net-api-album-all`, `GET /shoots/{shootId}/albums/{albumId}` → `photos-ryantate314-api-album`.
+  - `photos-ryantate314` (stages `api`, `prod`) is legacy: its routes `/{shoot}/{token}` → `photos-ryantate314`, plus a duplicate of the album route. CloudFront does not use it.
+- **Lambdas:** all nodejs22.x, x86_64, 128 MB, outside any VPC, no environment variables, one shared execution role. Timeouts: album 3s, album-all 370s, legacy 3s. Bucket and site URL are hardcoded in the code.
+- **Bucket policy** (unversioned, ~1.3k objects, ~2.4 GB, top-level prefixes `site/` and `images/`): allows CloudFront `s3:GetObject` for the distribution, and also **allows the Lambda role `s3:GetObject`/`GetObjectAttributes`/`ListBucket` via the bucket policy**. An imported policy must keep that statement until the old Lambdas are retired.
+- **Object layout:** `images/{shoot}/{album}/full-res/*`, `images/{shoot}/{album}/thumbnails/*`, and a zip per album at `images/{shoot}/{album}/{shoot}.zip`. A few shoots also have a shoot-level zip.
+- **Known defect:** `album-all` builds `downloadUrl` as `images/{shoot}/{shoot}.zip`, which only exists for some shoots (per-album zips are in the album folder).
+
 ## Gap analysis vs target
 
 | Area | Current | Target | Priority |

@@ -10,7 +10,8 @@ Decisions so far (2026-11-09): retire `worktimer` and `chore-board`; clean up al
 - [ ] Enable versioning on `photos.ryantate314.net` and `backup.ryantate314` only after checking storage cost impact (versioning on a large photo bucket increases cost on overwrites).
 - [ ] Note the live consumers of the static keys (see M5).
 
-## M1. Bootstrap and guardrails (additive only)
+## M1. Bootstrap and guardrails (additive only) - APPLIED 2026-11-09
+Verified read-only after apply: state bucket exists and holds `account/terraform.tfstate`; bootstrap state committed and scanned clean (no secrets/PII); CloudTrail logging with no delivery errors; budget `monthly-cost` ($10) alongside the old `$1 Warning`; password policy, Access Analyzer, account-level S3 public-access block, EBS default encryption and the `workload-permissions-boundary` policy all present. GitHub OIDC not enabled (default). Not verifiable with the read-only role: the Cost Anomaly monitor/subscription.
 1. Apply `bootstrap/` (new state bucket).
 2. Apply `account/` (budget, anomaly alerts, CloudTrail, password policy, Access Analyzer, permissions boundary; OIDC if wanted). Leave the account S3 public-access block **off**.
 - Verify: `terraform plan` clean on re-run; first CloudTrail log object appears; test budget email arrives.
@@ -22,13 +23,17 @@ Apply `envs/prod` (`10.20.0.0/16`, new VPC beside the default). Nothing existing
 - Cost delta: $0 (flow logs add pennies).
 
 ## M3. Adopt the photo-delivery site
-Create `workloads/photos` from the template and import, in this order:
-1. Route 53 hosted zone `ryantate314.net` and its records (never recreate the zone; name servers would change).
-2. ACM cert for `photos.ryantate314.net`.
-3. S3 bucket `photos.ryantate314.net` (set `bucket_name`), CloudFront distribution, OAC.
-4. API Gateway REST APIs and the three Lambdas, with their roles.
-Gate: `terraform plan` shows **no diff** (or only reviewed, intended diffs). Fix HCL to match reality; do not apply diffs that replace live resources. Note any intentional improvements (headers policy, TLS minimum, logging retention) as a separate, later change.
-- Rollback: `terraform state rm` the adopted resource (does not touch AWS) and revert.
+**Decisions (2026-11-09):** the workload lives in the app repo (`photo-delivery-site/infra`, see ADR 0004) and deploys with `make` (no CI). The site is console-built (no CDK/SAM/CloudFormation), so everything is imported in place. Read-only inventory is in `docs/current-state.md` ("Photo site detail").
+
+Order:
+1. **Adopt the existing stack unchanged** (`infra/` in the app repo, import blocks, no-op apply): S3 bucket `photos.ryantate314.net` (policy, public-access block, SSE), CloudFront distribution and OAC, ACM cert and its validation record, the `photos` A/AAAA records, the Lambda role and logging policy, the two live Lambdas, and the live REST API `photos-ryantate314-net` (stage `api`). The hosted zone is looked up by name, never created or imported. Not adopted (to delete later): the legacy REST API `photos-ryantate314`, the Lambda `photos-ryantate314`, `photos2` records and cert.
+2. **Deploy the existing code from the repo:** the first apply also updates the two Lambdas' code from `api/` and `make deploy-web` ships the Angular build.
+3. **Then** replace the API with a DynamoDB-backed index (HTTP API + single Lambda + indexer), cut CloudFront `/api/*` over, and retire the old REST API, Lambdas and `photosite-uploader` (the upload process may change destructively).
+
+**Status 2026-11-09:** steps 1 and 2 (Terraform adoption and Lambda code from the repo) are APPLIED by the owner; the follow-up `terraform plan` shows no changes and the live site and API respond normally. `make deploy-web` (content sync) is not yet exercised. Step 3 (DynamoDB rewrite) is not started.
+
+Gate: `terraform plan` shows only reviewed, intended diffs and no replace/destroy. Intended diffs in step 1: default tags on adopted resources, 14-day retention on the one log group without retention, an abort-incomplete-multipart lifecycle rule, a TLS-only deny statement in the bucket policy, and the Lambda code update. Everything else (headers policy, TLS minimum, price class, OAC name) is a later, separate change.
+- Rollback: `terraform state rm` the adopted resource (does not touch AWS) and revert; owner approval required for state surgery.
 
 ## M4. Marketing site and apex bucket
 The legacy bucket `ryantate314.net` held only a 2023 timezone-test `index.html`. **Done by the owner on 2026-11-09 (verified read-only):** the apex `A` record was deleted and the bucket emptied. The apex currently resolves to nothing (only NS/SOA remain); no graceful changeover is needed.
@@ -44,7 +49,7 @@ Remaining:
 |---|---|
 | `photosite-uploader` (key used 2026-10-04) | Find the consumer; replace with the OIDC deploy role (`enable_deploy_role`); deactivate key, wait, delete |
 | `s3-cli-user` (2 active keys, used 2026-10-16) | Find consumers; replace with SSO; remove the unused key now, then the user |
-| `home-proxy-caddy` (key used 2026-01-09) | Find the consumer on the homelab; scope or replace |
+| `home-proxy-caddy` (key used 2026-01-09) | Find the consumer on the homelab; scope or replace. Lead: a customer-managed policy `ryantate314-letsencrypt` exists, likely Route 53 DNS-challenge permissions for Caddy certificates; check that policy's scope (should be limited to this zone's TXT records) before rotating the key |
 | `dev-gliderview`, `PowerUser` (last used 2024) | Deactivate keys, wait 30 days, delete user |
 | `developer-bob` (no keys, no console) | Delete |
 | `worktimer-client` | Deleted with worktimer |
